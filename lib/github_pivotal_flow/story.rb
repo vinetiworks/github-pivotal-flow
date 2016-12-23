@@ -173,14 +173,14 @@ module GithubPivotalFlow
       when 'chore'
         [master_branch_name]
       when 'bug'
-        self.labels.include?('hotfix') ? [master_branch_name, development_branch_name] : [development_branch_name]
+        hotfix? ? [master_branch_name, development_branch_name] : [development_branch_name]
       else
         [development_branch_name]
       end
     end
 
     def master_branch_name
-      Git.get_config(KEY_MASTER_BRANCH, :inherited)
+      hotfix? ? Git.get_config(KEY_VALIDATION_BRANCH, :inherited) : Git.get_config(KEY_MASTER_BRANCH, :inherited)
     end
 
     def development_branch_name
@@ -192,13 +192,17 @@ module GithubPivotalFlow
       pivotal_story.labels.split(',').collect(&:strip)
     end
 
-    def params_for_pull_request
+    def params_for_pull_request(for_hotfix=false)
       {
-        base: root_branch_names.first,
+        base: for_hotfix ? root_branch_names.first : root_branch_names.last,
         head: branch_name,
         title: name,
         body: description,
       }
+    end
+
+    def hotfix?
+      labels.include?('hotfix')
     end
 
     def method_missing(m, *args, &block)
@@ -280,7 +284,7 @@ module GithubPivotalFlow
       when 'feature'
         prefix = Git.get_config(KEY_FEATURE_PREFIX, :inherited)
       when 'bug'
-        prefix = labels.include?('hotfix') ? Git.get_config(KEY_HOTFIX_PREFIX, :inherited) : Git.get_config(KEY_FEATURE_PREFIX, :inherited)
+        prefix = hotfix? ? Git.get_config(KEY_HOTFIX_PREFIX, :inherited) : Git.get_config(KEY_FEATURE_PREFIX, :inherited)
       when 'release'
         prefix = Git.get_config(KEY_RELEASE_PREFIX, :inherited)
       else

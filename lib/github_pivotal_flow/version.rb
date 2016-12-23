@@ -1,3 +1,3 @@
 module GithubPivotalFlow
-  VERSION = '1.3'
+  VERSION = '2.0'
 end

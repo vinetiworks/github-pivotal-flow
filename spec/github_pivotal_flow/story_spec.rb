@@ -4,6 +4,13 @@ module GithubPivotalFlow
   describe Story do
     let(:fake_git) { double('Git').as_null_object }
 
+    def stub_git_branches
+      allow(Git).to receive(:get_config).with(GithubPivotalFlow::KEY_MASTER_BRANCH, :inherited) { 'master' }
+      allow(Git).to receive(:get_config).with(GithubPivotalFlow::KEY_VALIDATION_BRANCH, :inherited) { 'validation' }
+      allow(Git).to receive(:get_config).with(GithubPivotalFlow::KEY_DEVELOPMENT_BRANCH, :inherited) { 'development' }
+      allow(Git).to receive(:get_config).with(GithubPivotalFlow::KEY_FEATURE_PREFIX, :inherited) { 'feature' }
+    end
+
     before do
       $stdout = StringIO.new
       $stderr = StringIO.new
@@ -11,7 +18,7 @@ module GithubPivotalFlow
       @project = double('project')
       @stories = double('stories')
       @story = double('story')
-      @pivotal_story = double('pivotal_story')
+      @pivotal_story = double('pivotal_story', labels: 'label1')
       @menu = double('menu')
       allow(@project).to receive(:stories).and_return(@stories)
       allow(@story).to receive(:pivotal_story).and_return(@pivotal_story)
@@ -228,6 +235,98 @@ module GithubPivotalFlow
           expect(Git).to receive(:push).with('development').and_return(nil)
 
           @story.merge_to_roots!
+        end
+      end
+    end
+
+    describe '#master_branch_name' do
+      before do
+        @story = GithubPivotalFlow::Story.new(@project, @pivotal_story)
+        stub_git_branches
+      end
+
+      context 'when the story is a hotfix' do
+        before do
+          allow(@story).to receive(:hotfix?).and_return(true)
+        end
+
+        it 'returns the validation branch' do
+          expect(@story.master_branch_name).to eq('validation')
+        end
+      end
+
+      context 'when the story is NOT a hotfix' do
+        before do
+          allow(@story).to receive(:hotfix?).and_return(false)
+        end
+
+        it 'returns the master branch' do
+          expect(@story.master_branch_name).to eq('master')
+        end
+      end
+    end
+
+    describe '#hotfix?' do
+      before do
+        @story = GithubPivotalFlow::Story.new(@project, @pivotal_story)
+      end
+
+      context 'when the story is a hotfix' do
+        before do
+          allow(@pivotal_story).to receive(:labels).and_return('foo,bar,hotfix,baz')
+        end
+
+        it 'returns true' do
+          expect(@story.hotfix?).to eq(true)
+        end
+      end
+
+      context 'when the story is NOT a hotfix' do
+        before do
+          allow(@pivotal_story).to receive(:labels).and_return('foo,bar,baz')
+        end
+
+        it 'returns false' do
+          expect(@story.hotfix?).to eq(false)
+        end
+      end
+    end
+
+    describe '#params_for_pull_request' do
+      before do
+        @story = GithubPivotalFlow::Story.new(@project, @pivotal_story)
+        allow(@pivotal_story).to receive(:story_type).and_return('bug')
+        allow(@pivotal_story).to receive(:name).and_return('pivotal-story-name')
+        allow(@pivotal_story).to receive(:description).and_return('pivotal-story-description')
+        allow(@story).to receive(:branch_name).and_return('my-branch')
+        stub_git_branches
+      end
+
+      context 'when the story is a hotfix' do
+        before do
+          allow(@story).to receive(:hotfix?).and_return(true)
+        end
+
+        context 'when for_hotfix is true' do
+          it 'returns params with a base of the validation branch' do
+            expect(@story.params_for_pull_request(true)[:base]).to eq('validation')
+          end
+        end
+
+        context 'when for_hotfix is false' do
+          it 'returns params with a base of the development branch' do
+            expect(@story.params_for_pull_request[:base]).to eq('development')
+          end
+        end
+      end
+
+      context 'when the story is NOT a hotfix' do
+        before do
+          allow(@story).to receive(:hotfix?).and_return(false)
+        end
+
+        it 'returns params with a base of the master branch' do
+          expect(@story.params_for_pull_request[:base]).to eq('development')
         end
       end
     end
